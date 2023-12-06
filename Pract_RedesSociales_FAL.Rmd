@@ -1,0 +1,1419 @@
+---
+title: "Proyecto - Análisis de Redes Sociales"
+author: 'Alumno: Federico Álvarez-Labrador'
+output:
+  word_document: default
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+
+El objetivo del proyecto es analizar un grafo, que se provee en el archivo adjunto. En este fichero, encontramos solamente dos columnas, correspondiente a una interacción entre dos nodos de la red. Esta red está formada por distintos individuos que tienen contactos cara a cara durante un período de tiempo.
+
+A continuación, dividimos el proyecto en apartados, con una breve descripción de qué debe contener cada chunk de código donde el alumno desarrollará su respuesta, así como las explicaciones que considere oportunas. Por favor, razona todas tus soluciones y escribe las explicaciones en azul.
+
+Junto al título de cada apartado se encuentra la puntuación del mismo (pueden obtenerse hasta 12 puntos, aunque solamente se evaluará del 0 al 10, hay dos puntos extra).
+
+## Carga de datos y comprobaciones iniciales
+
+En este apartado:
+
+* Cargamos el fichero adjunto al proyecto.
+
+<font color='blue'>    
+
+Se cargan las librerías y el archivo ".csv" a emplear en la presente práctica (se establece una semilla aleatoria para fijar los posibles resultados posteriores, de cara a que sean reproducibles en cualquier momento).
+
+El archivo cargado representa la lista de adyacencia del grafo a analizar. En dicho fichero, cada línea recoge un enlace del grafo, representado mediante el nodo de origen y el nodo de destino (puede incluir adicionalmente el peso del enlace, aunque en este caso no lo está).
+
+Adicionalmente revisamos la estructura y dimensiones generales de los datos obtenidos para comprobar que los datos se han cargado correctamente.
+
+</font>
+
+```{r message=FALSE, warning=FALSE}
+
+# Se limpia el espacio de trabajo:
+rm(list = ls())
+
+library(igraph)
+library(misty)
+library(data.table)
+library(purrr)
+library(reshape2)
+library(dplyr)
+library(RColorBrewer)
+library(ggplot2)
+
+set.seed(123)
+
+
+rc <- fread("../data_in/red_contactos.csv", header=TRUE)
+
+str(rc)
+
+summary(rc)
+
+```
+
+* Convertirlo en un objeto grafo de IGraph. Se cargará como un grafo NO dirigido.
+
+<font color='blue'>    
+
+Se utiliza la lista de adyacencia cargada anteriormente para definir el grafo a analizar (se empleará la librería "igraph" para todas las funciones relacionadas con el grafo).
+
+
+Tal y como se pide en el proyecto, se define el grafo como no dirigido. Adicionalmente revisamos la estructura y dimensiones generales del grafo obtenidos para comprobar que los datos se han cargado correctamente.
+
+</font>
+
+```{r}
+
+g <- graph_from_data_frame(rc, directed=FALSE)
+
+summary(g)
+
+```
+
+
+* Comprobar que, efectivamente, tiene el número de nodos y enlaces correcto.
+
+<font color='blue'>    
+
+Se comprueba el número de nodos y enlaces del grafo mediante funciones "gorder(g)" y "gsize(g)"|"ecount(g)" respectivamente, todas de la librería "igraph".
+
+</font>
+
+```{r}
+
+# Número de vértices (Order)
+gorder(g)
+
+# Número de enlaces (Number of edges)
+gsize(g)
+ecount(g)
+
+```
+
+
+* Simplificar: eliminar bucles y agregar enlaces múltiples, contando cuántas veces aparece un enlace y almacenándolo como un peso de la red resultante.
+
+<font color='blue'>    
+
+Se comprueba el número de bucles presentes en el grafo (su número es elevado).
+
+</font>
+
+```{r}
+
+# Loops in the graph
+g_loops <- which_multiple(g, eids=E(g))
+length(g_loops[g_loops==TRUE])
+
+```
+
+
+<font color='blue'>   
+
+Se realiza una copia del grafo inicial y se asignan pesos unitarios a cada uno de los enlaces del grafo (bucles y enlaces repetidos o no repetidos). Posteriormente se simplifica el grafo, eliminando los en laces repetidos y bucles, sumando los pesos de los enlaces repetidos y asignando dicha suma a su correspondiente enlace. 
+
+</font>
+
+
+```{r}
+
+g1 <- copy(g)
+E(g1)$weight <- 1
+E(g1)$weight[1:24]
+g1 <- igraph::simplify(g1, remove.multiple=TRUE, remove.loops=TRUE, edge.attr.comb=list(weight="sum"))
+
+```
+
+
+
+
+<font color='blue'>    
+
+Se revisa que la simplificación del grafo se haya realizado correctamente: el grafo es simple (sin bucles ni enlaces repetidos) y los pesos de los enlaces se han asignado correctamente. Por tanto, el número de nodos no varía pero se ha reducido notablemente el número de enlaces.
+
+</font>
+
+```{r}
+
+is_simple(g1)
+any(which_multiple(g1))
+
+E(g1)$weight[1:24]
+is_weighted(g1)
+
+# Order (number of vertices) of a graph
+gorder(g1)
+
+# The size of the graph (number of edges)
+gsize(g1)
+ecount(g1)
+
+```
+
+<font color='blue'>   
+
+Se obtiene también la densidad del grafo, que en este caso es baja.
+
+</font>
+
+```{r}
+
+# Density of the graph
+edge_density(g1, loops=FALSE)
+
+```
+
+
+## Selección de la componente conexa mayor
+
+En este apartado, se pide realizar los pasos adecuados para generar un nuevo objeto grafo, que sea conexo, y que involucre a todos los nodos y enlaces de la componente conexa mayor del grafo original.
+
+
+
+* Analizamos la componentes del grafo simplificado (g1)
+
+<font color='blue'>    
+
+Primero obtenemos las componentes principales del grafo, analizando sus tamaños. En este caso hay 3 componentes: 1 con 1388 nodos y otras 2 con 1 nodo cada una (grafo inicial no es conexo).
+
+</font>
+
+```{r}
+
+# Grafo es conexo (sólo 1 componente)
+is_connected(g1)
+# (grafo no es conexo)
+
+
+# Datos de las componentes del grafo
+ccs_g1<-clusters(g1)
+ccs_g1$no    # nº de grafos
+ccs_g1$csize  # tamaño de los grafos (nº vértices)
+#head(ccs_g1$membership) # devuelve la componente a la que pertenece cada nodo
+
+```
+
+
+* Identificamos los nodos de la componente conexa mayor del grafo simplificado (g1)
+
+<font color='blue'>   
+
+Seleccionamos la componente conexa mayor e identificamos sus nodos, para posteriormente generar el grafo pedido.
+
+</font>
+
+```{r}
+
+# Seleccionamos componente conexa mayor del grafo inicial
+
+ccs_g1$csize
+idccmax_g1<-which.max(ccs_g1$csize)  # componente con mayor nº de nodos
+idccmax_g1
+
+idnodos_g1<-which(ccs_g1$membership==idccmax_g1)  
+# lista de nodos de la componente con mayor nº de nodos (obtenida justo antes)
+head(idnodos_g1, 24)
+
+```
+
+
+* Creamos nuevo grafo con los nodos de la componente conexa mayor del grafo simplificado (g1)
+
+<font color='blue'>    
+
+Utilizando los nodos de la componente conexa mayor del grafo inicial creamos un nuevo grafo, en este caso ya si conexo.
+
+</font>
+
+```{r}
+
+glc_g1 <- induced_subgraph(g1, vids=idnodos_g1)
+#glc_g1
+
+is.connected(glc_g1)  # al ser una componente debe salirnos "conexa"
+
+```
+
+
+<font color='blue'>    
+
+Revisamos los datos generales del grafo obtenido (1388 nodos, 53942 enlaces...).
+
+</font>
+
+
+```{r}
+
+summary(glc_g1)
+
+# Order (number of vertices) of a graph
+gorder(glc_g1)
+
+# The size of the graph (number of edges)
+gsize(glc_g1)
+ecount(glc_g1)
+
+```
+
+
+
+## Análisis descriptivo de la componente conexa mayor
+
+En este apartado, se pide analizar descriptivamente el grafo usando los conceptos que hemos visto durante las clases de teoría:
+
+
+* Grado medio
+
+<font color='blue'>    
+
+Calculamos el grado (nº enlaces que llegan al nodo) de todos los nodos del grafo, para posteriormente sacar la media de todos ellos (grado medio).
+
+</font>
+
+
+```{r}
+
+degr_glc_g1 <- degree(glc_g1)
+
+head(degr_glc_g1, 24)
+mean(degr_glc_g1)
+
+```
+
+
+
+* Distancia media
+
+<font color='blue'>    
+
+Es la media de todos los caminos mínimos del grafo. Éste es uno de los rasgos que caracterizan el grafo como objeto y que permiten también comparar grafos. Utilizamos la función "average.path.length()" de la librería "igraph".
+
+</font>
+
+```{r}
+
+average.path.length(glc_g1, directed=FALSE, unconnected=FALSE)
+
+```
+
+
+* Diámetro
+
+<font color='blue'>     
+
+Es el máximo de todos los caminos mínimos del grafo. Éste es otro de los rasgos que caracterizan el grafo como objeto y que permiten también comparar grafos. Utilizamos la función "diameter()" de la librería "igraph".
+
+</font>
+
+```{r}
+
+diameter(glc_g1, directed=FALSE, unconnected=FALSE, weights=glc_g1$weight)
+
+```
+
+
+* Distribución de grados y ajuste a una Power-Law
+
+<font color='blue'>    
+
+La "distribución de grados", es la representación de la distribución de grados de todos los nodos de una red. Generalmente esta distribución se asemeja a una función “Power Law” (función exponencial que dibujada en escala logarítmica se asemeja a una recta, REVISAR GRÁFICO). Las características generales de esta distribución hace que encontremos:
+
+
+  -	Muy pocos nodos con grado muy alto
+    
+  -	Muchos nodos con grado muy bajo
+  
+
+Además, las redes del mundo real suelen cumplir:
+
+  
+  -	Distribución de grados se suele asemejar a una “Power Law”
+  
+  -	Redes suelen tender a cerrar tripletas (cerrar triángulos de enlaces entre nodos)
+  
+  
+
+Conclusión: redes del mundo real no suelen tener distribuciones uniformes de grados.
+
+</font>
+
+
+```{r}
+
+hist(degree(glc_g1))
+
+```
+
+
+<font color='blue'>    
+
+Representamos los nodos de la red en un gráfico con los grados en orden logarítmico.
+
+</font>
+
+```{r}
+dd = degree.distribution(glc_g1, mode = "all", cumulative = FALSE)
+
+# Degree distribution
+
+# Function to plot the degree distribution
+plot_degree_distribution = function(graph) {
+  
+    # calculate degree
+    d = degree(graph, mode = "all")
+    dd = degree.distribution(graph, mode = "all", cumulative = FALSE)
+    degree = 1:max(d)
+    probability = dd[-1]
+    
+    # delete blank values
+    nonzero.position = which(probability != 0)
+    probability = probability[nonzero.position]
+    degree = degree[nonzero.position]
+    # plot
+    plot(probability ~ degree, log = "xy", xlab = "Degree (log)", ylab = "Probability (log)", 
+        col = 1, main = "Degree Distribution")
+}
+
+plot_degree_distribution(glc_g1)
+
+```
+
+
+
+<font color='blue'>    
+
+Una vez obtenido el gráfico, ajustamos la función "Power-Law" a la distribución de grados de nuestro grafo.
+
+</font>
+
+
+```{r}
+
+# Power law distribution
+
+# Function to fit+plot the power law distribution
+fit_power_law = function(graph) {
+  
+    # calculate degree
+    d = degree(graph, mode = "all")
+    dd = degree.distribution(graph, mode = "all", cumulative = FALSE)
+    degree = 1:max(d)
+    probability = dd[-1]
+    
+    # delete blank values
+    nonzero.position = which(probability != 0)
+    probability = probability[nonzero.position]
+    degree = degree[nonzero.position]
+    reg = lm(log(probability) ~ log(degree))
+    cozf = coef(reg)
+    power.law.fit = function(x) exp(cozf[[1]] + cozf[[2]] * log(x))
+    alpha = -cozf[[2]]
+    R.square = summary(reg)$r.squared
+    print(paste("Alpha =", round(alpha, 3)))
+    print(paste("R square =", round(R.square, 3)))
+    # plot
+    plot(probability ~ degree, log = "xy", xlab = "Degree (log)", ylab = "Probability (log)", 
+        col = 1, main = "Degree Distribution")
+    curve(power.law.fit, col = "red", add = T, n = length(d))
+}
+
+
+fit_power_law(glc_g1)
+
+
+```
+
+
+
+* Clustering
+
+<font color='blue'>    
+
+El clustering global consiste en analizar, de todas las tripletas del grafo (3 nodos conectados entre sí), cuantas están cerradas (triángulo cerrado). Habrá grafos que con la misma densidad tiendan a cerrar más triángulos que otros (por construcción, por naturaleza de ese grafo...). Es una caracterítica propia de la red y es otro de los rasgos que caracterizan el grafo como objeto y que permiten también comparar grafos. 
+
+</font>
+
+
+```{r}
+
+# Global clustering (tripletas/triángulos cerrados)
+
+clust_glc_g1 <- transitivity(glc_g1, type="global", vids=NULL, weights=glc_g1$weight, isolates="zero")
+
+clust_glc_g1
+
+```
+
+
+
+* Entropía de los nodos
+
+
+<font color='blue'>   
+
+La entropía es una de las métricas a nivel de nodo (nivel microscópico del grafo) y que nos permite hacernos una idea y comparar la "diversidad de conexiones" de un nodo. Por tanto, es un rasgo que caracteriza el nodo como objeto y su relación con otros nodos. También me permite comparar nodos. 
+
+</font>
+
+```{r}
+
+# Entropía normalizada
+head(diversity(glc_g1, weights=glc_g1$weight, vids=V(glc_g1)), 24)
+
+```
+
+
+* Centralidad de los nodos y comparación con métricas de grado y clustering
+
+<font color='blue'>   
+
+La centralidad es otro de los rasgos que caracterizan el nodo como objeto y su relación con otros nodos (también permite comparar nodos). Existen diferentes métricas de centralidad en función de la forma de analizar la centralidad (nodos centrales) en un grafo:
+
+
+  -	Centralidad por grado (nodo más importante = nodo con mayor nº de enlaces)
+  
+  -	Centralidad por cercanía – “Closeness” (nodo más importante si el resto están cerca de él)
+  
+  -	Centralidad “por estar en medio” – “Betweenness” (nodo más importante si aparece frecuentemente en los caminos mínimos entre nodos, es la métrica más estándar de centralidad)
+  
+  -	Centralidad por autovectores – “eigenvector” (nodos más importantes están cerca de nodos con mucho grado)
+  
+  
+Se obtienen todas para posteriormente realizar el análisis solicitado.
+
+</font>
+
+```{r}
+
+# Centralidad por grado
+c_degree <- centr_degree(glc_g1, loops = TRUE, normalized = TRUE)
+
+
+```
+
+
+```{r}
+
+# Centralidad por cercanía (closeness)
+centr_clo(glc_g1, normalized = TRUE)
+
+
+```
+
+
+```{r}
+
+### MÉTRICA MÁS ESTÁNDAR
+
+# Centralidad por "estar en medio" (betweenness)
+
+cenbet_glc_g1 <-centr_betw(glc_g1, directed=FALSE, nobigint=TRUE, normalized=TRUE)
+
+cenbet_glc_g1
+
+
+```
+
+
+```{r}
+
+# Centralidad por "autovalor" (eigenvector)
+centr_eigen(glc_g1, directed=FALSE, scale=TRUE, options=arpack_defaults, normalized=TRUE)
+
+
+```
+
+
+* Comparación con métricas de grado clustering y centralidad
+
+<font color='blue'>    
+ 
+Para realizar el análisis comparativo entre las características de grado, clustering y centralidad vamos a tomar 2 nodos como ejemplo, y a comparar sus distintas métricas locales.
+
+
+Para que los nodos escogidos resulten relevante tomaremos aquellos con grados máximo y mínimo del grafo respectivamente, y los analizaremos respecto a distintas métricas de grado, clustering local y centralidad para comprobar la relación existente entre las mismas.
+
+</font>
+
+
+```{r}
+
+# Grado
+
+degr_max <- degr_glc_g1[which.max(degr_glc_g1)]   # (Grado = nº enlaces que llegan al nodo)
+degr_max
+
+degr_min <- degr_glc_g1[which.min(degr_glc_g1)]   # (Grado = nº enlaces que llegan al nodo)
+degr_min
+
+```
+
+```{r}
+
+# Centralidad (métrica más estándar: "Betweenness")
+
+nodo_01_bet <- betweenness(glc_g1, v=c("079-01-014"), directed = FALSE, weights=NULL, normalized=FALSE)
+nodo_01_bet
+
+nodo_02_bet <- betweenness(glc_g1, v=c("45-133-000"), directed = FALSE, weights=NULL, normalized=FALSE)
+nodo_02_bet
+
+
+```
+
+```{r}
+
+# Clustering
+
+nodo_01_clust <- transitivity(glc_g1, vids=c("079-01-014"), type="local")
+nodo_01_clust
+
+nodo_02_clust <- transitivity(glc_g1, vids=c("45-133-000"), type="local")
+nodo_02_clust
+
+#El clustering global consiste en analizar, de todas las tripletas del grafo (3 nodos conectados entre sí), cuantas están cerradas (triángulo cerrado). Habrá grafos que con la misma densidad tiendan a cerrar más triángulos que otros (por construcción, por naturaleza de ese grafo...).
+
+
+```
+
+
+<font color='blue'>     
+ 
+Repasando los resultados obtenidos podemos concluir que las 3 métricas están totalmente relacionadas.
+
+
+ - Nodo 1: Nodo con grado máximo (mayor nº enlaces que llegan al nodo), mayor valor de centralidad "betweenness" (mayor frecuencia en los caminos mínimos entre nodos) y mayor valor de clustering (si es central tendrá un mayor nº de triángulos cerrados) = todo ello representa que es nodo más "central".
+
+
+ - Nodo 2: Nodo con grado mínimo (sólo 1 enlace llega al nodo), valor nulo de centralidad "betweenness" (frecuencia nula en los caminos mínimos entre nodos) y valor nulo de clustering (debe estar situado en el exterior del grafo ya que no tiene triángulos cerrados, sólo tripletas) = todo ello representa que es nodo más "central".
+
+
+
+</font>
+
+
+
+## Análisis de comunidades de la componente conexa mayor
+
+En este apartado, se pide aplicar dos algoritmos de detección de comunidades, compararlos y seleccionar cuál es, en tu opinión, el que da una mejor respuesta. Razona tu selección.
+
+
+<font color='blue'>                     
+
+Por motivos académicos y por curiosidad del alumno se deciden analizar algunos algoritmos adicionales a los solicitados. En los apartados posteriores se elegirá tan sólo uno para las visualizaciones.
+
+
+De cara a analizar y comparar los distintos algoritmos de clustering de comunidades se obtendrá de cada uno el número de comunidades resultantes y la modularidad conseguida por el mismo en el presente caso.
+
+</font>
+
+
+```{r}
+
+#Greedy community detection
+c1 <- fastgreedy.community(glc_g1)
+
+# Nº de comunidades
+length(c1)  
+
+# Modularidad
+modularity(c1)
+
+
+```
+
+
+```{r}
+
+# Leading eigenvector community detection
+c2 = cluster_leading_eigen(glc_g1)
+
+# Nº de comunidades
+length(c2)  
+
+# Modularidad
+modularity(c2)
+
+```
+
+
+```{r}
+
+# Walktrap community detection
+c3 <- walktrap.community(glc_g1)
+
+# Nº de comunidades
+length(c3)  
+
+# Modularidad
+modularity(c3)
+
+```
+
+
+
+```{r}
+
+# Multilevel community detection
+c4 <- multilevel.community(glc_g1)
+
+# Nº de comunidades
+length(c4)  
+
+# Modularidad
+modularity(c4)
+
+```
+
+```{r}
+
+# Infomap community detection
+c5 <- infomap.community(glc_g1)
+
+# Nº de comunidades
+length(c5)  
+
+# Modularidad
+modularity(c5)
+
+```
+
+
+
+<font color='blue'>                     
+
+La modularidad es una métrica que representa lo buena/mala que es una partición (partición = estructura de comunidades). Es un valor normalizado entre [0,1]. Generalmente la modularidad en grafos aleatorios varía entre 0’3-0’7 y se considera valor bueno a partir de Q ≥ 0’5.
+
+
+Las características principales de esta métrica son:
+
+  -	Es útil para comparar particiones y resultados de algoritmos (búsqueda comunidades)
+  
+  -	Medida de bondad sobre la partición
+  
+
+El otro rasgo que vamos a tener en cuenta para seleccionar el algoritmo de clustering a utilizar es el número de comunidades. En este aspecto seleccionaremos aquel algoritmo que no permita reducir el número de comunidades y simplificar lo máximo posible el clustering, mejorando a su vez la interpretabilidad.
+
+
+
+Tras analizar los resultados se descartan los siguientes:
+
+
+  - Infomap community detection (menor modularidad y mayor nº de comunidades)
+
+  - Walktrap community detection(menor modularidad y mucho mayor nº de comunidades)
+
+  - Leading eigenvector community detection (menor modularidad y similar nº de comunidades)
+
+
+
+Teniendo en cuenta los dos factores antes mencionados, el mejor algortimo encontrado para el presente caso es:
+
+  - Multilevel community detection (12 comunidades y modularidad Q=0.5019415)
+
+
+
+*NOTA ADICIONAL SOBRE EL ALGORITMO SELECCIONADO:
+
+En multilevel.community, las comunidades no se fusionan; en lugar de eso, los nodos se mueven entre las comunidades de manera que cada nodo toma una decisión local que maximiza su propia contribución a la puntuación de modularidad. Cuando este procedimiento se atasca (es decir, ninguno de los nodos cambia su pertenencia), entonces todas las comunidades se colapsan en nodos únicos y el proceso continúa (por eso es multinivel).
+
+</font>
+
+
+
+
+
+## Visualización del grafo por comunidades de la componente conexa mayor
+
+En este apartado, se pide visualizar el grafo coloreando cada nodo en función de la comunidad a la que pertenezca, según tu elección del apartado anterior.
+
+
+<font color='blue'>                    
+
+Se decide obtener varias visulizaciones del algortimo de clustering elegido ("Multilevel"), para tratar de conseguir la mejor visualización posible.
+
+</font>
+
+
+```{r, fig.width=40, fig.height=40}
+
+# Multilevel: Visualización 1
+
+plot(glc_g1, 
+     
+    vertex.label.font=c(1),                  # Font: 1 plain, 2 bold, 3, italic, 4 bold italic, 5 symbol
+    vertex.label.cex=c(0.1),                 # Font size (multiplication factor, device-dependent)
+    vertex.label.dist=0,                           # Distance between the label and the vertex
+    vertex.label.degree=0 ,                     # The position of the label in relation to the vertex (use pi)
+    vertex.color=rainbow(12, alpha=0.8)[c4$membership],
+    vertex.size=1.5,
+    
+    #edge.color=rep(c("red","pink"),5),           # Edge color
+    edge.width=seq(0.5),                        # Edge width, defaults to 1
+    edge.arrow.size=1,                           # Arrow size, defaults to 1
+    edge.arrow.width=1,                          # Arrow width, defaults to 1
+    edge.lty=c("solid"),                         
+    
+    layout = layout.fruchterman.reingold
+    
+    
+    )
+
+
+ggsave("../data_out/Multilevel_01.png", plot = last_plot(), width = 40, height = 40, units = "cm")
+
+
+```
+
+
+```{r, fig.width=40, fig.height=40}
+
+# Multilevel: Visualización 2
+
+l <- plot(glc_g1, 
+     
+    vertex.label.font=c(1),                  # Font: 1 plain, 2 bold, 3, italic, 4 bold italic, 5 symbol
+    vertex.label.cex=c(0.1),                 # Font size (multiplication factor, device-dependent)
+    vertex.label.dist=0,                           # Distance between the label and the vertex
+    vertex.label.degree=0 ,                     # The position of the label in relation to the vertex (use pi)
+    vertex.color=rainbow(12, alpha=0.8)[c4$membership],
+    vertex.size=1.5,
+    
+    #edge.color=rep(c("red","pink"),5),           # Edge color
+    edge.width=seq(0.5),                        # Edge width, defaults to 1
+    edge.arrow.size=1,                           # Arrow size, defaults to 1
+    edge.arrow.width=1,                          # Arrow width, defaults to 1
+    edge.lty=c("solid"),                           
+
+    )
+
+
+plot(glc_g1, 
+     
+    vertex.label.font=c(1),                  # Font: 1 plain, 2 bold, 3, italic, 4 bold italic, 5 symbol
+    vertex.label.cex=c(0.1),                 # Font size (multiplication factor, device-dependent)
+    vertex.label.dist=0,                           # Distance between the label and the vertex
+    vertex.label.degree=0 ,                     # The position of the label in relation to the vertex (use pi)
+    vertex.color=rainbow(12, alpha=0.8)[c4$membership],
+    vertex.size=1.5,
+    
+    #edge.color=rep(c("red","pink"),5),           # Edge color
+    edge.width=seq(0.5),                        # Edge width, defaults to 1
+    edge.arrow.size=1,                           # Arrow size, defaults to 1
+    edge.arrow.width=1,                          # Arrow width, defaults to 1
+    edge.lty=c("solid"), 
+    
+    layout = l
+    
+    )
+
+ggsave("../data_out/Multilevel_02.png", plot = last_plot(), width = 40, height = 40, units = "cm")
+
+
+```
+
+
+
+```{r, fig.width=30, fig.height=30}
+
+# Multilevel: Visualización 3
+
+# Define the number of colors you want
+nb.cols <- 12
+mycolors <- colorRampPalette(brewer.pal(11, "Spectral"))(nb.cols)
+
+l <- layout.fruchterman.reingold(glc_g1)
+l <- norm_coords(l, ymin=-1, ymax=1, xmin=-1, xmax=1)
+
+
+plot(glc_g1, 
+     
+    vertex.label.font=c(1),                  # Font: 1 plain, 2 bold, 3, italic, 4 bold italic, 5 symbol
+    vertex.label.cex=c(0.1),                 # Font size (multiplication factor, device-dependent)
+    vertex.label.dist=0,                           # Distance between the label and the vertex
+    vertex.label.degree=0 ,                     # The position of the label in relation to the vertex (use pi)
+    vertex.color=mycolors[c4$membership],
+    vertex.size=1.5,
+    
+    #edge.color=rep(c("red","pink"),5),           # Edge color
+    edge.width=seq(0.5),                        # Edge width, defaults to 1
+    edge.arrow.size=1,                           # Arrow size, defaults to 1
+    edge.arrow.width=1,                          # Arrow width, defaults to 1
+    edge.lty=c("solid"),                    
+    
+    layout = l,
+    rescale=F, layout=l*1
+    
+    )
+
+
+ggsave("../data_out/Multilevel_03.png", plot = last_plot(), width = 40, height = 40, units = "cm")
+
+                   
+```
+
+
+
+
+## Difundiendo un rumor (o un virus) en la componente conexa mayor
+
+Vamos a implementar un modelo epidemiológico sobre el grafo que, típicamente, se utiliza para simular escenarios de difusión de enfermedades pero también en contextos como la distribución de rumoeres e información. Vamos a implementar un modelo SIR que se caracteriza por tener los siguientes parámetros:
+
+* Número de nodos iniciales infectados en el momento t=0 (N).
+* Beta: probabilidad de contagio de un nodo infectado (I) a un nodo susceptible de serlo (S)
+* Gamma: probabilidad de que un nodo infectado (I) se recupere en momenteo actual (R). Los nodos en estado (R) no son susceptibles y permanecen en este estado infinitamente.
+
+Se pide desarrollar una función que tenga como parámetros los tres valores anteriores y un cuarto que sea un grafo que, en nuestro caso, será la componente conexa mayor del grafo original de esta práctica. Dicha función simulará el proceso SIR:
+
+* En t=0, se seleccionan N nodos al azar, que pasarán a estado infectado.
+* En t=1, se podrán contagiar con probabilidad Beta nodos que tienen un vecino infectado; OJO: si un nodo en estado S tiene varios vecinos en estado I tiene más probabilidad de infectarse ya que cada vecino tendrá un intento de infectarle.
+* Se repite el paso anterior sucesivamente, hasta que no vemos infectados nuevos durante, al menos, 3 iteraciones.
+
+
+
+<font color='blue'>                    
+
+
+Se ha definido el modelo epidemiológico para representar el escenario propuesto, de acuerdo a las variables definidas en el enunciado:
+
+  - input_graph  (Grafo de la red analizada)
+  
+  - N=1  (Nº inicial de infectados, por defecto valor 1)
+  
+  - beta=0.5  (Probab. de infección, por defecto valor 0.5)
+  
+  - gamma=0.5  (Probab. de recuperación, por defecto valor 0.5)
+  
+
+
+A los anteriores parámetros se han añadido 2 más por considerarse interesantes en ciertos casos:
+
+
+  - weights=FALSE  (Def. si se considera el efecto de los pesos de los enlaces en el modelo o no)
+  
+  - num_iter=NA   (Def.nº de iteraciones manual, por defecto parará tras 3 iteraciones sin nuevos contagios) 
+
+
+A continuación se puede revisar la función del modelo (función "modelo_SIR()").
+
+
+</font>
+
+
+
+```{r}
+
+
+modelo_SIR <- function(input_graph, weights=FALSE, N=1, beta=0.5, gamma=0.5, num_iter=NA) {
+  
+  shhh <- function(x){suppressWarnings(suppressMessages(x))}  # It's a library, so shhh!
+  shhh(library(purrr))
+  shhh(library(reshape2))
+  shhh(library(dplyr))
+  
+  # DATAFRAME ENLACES GRAFO
+  #########################################  
+  if (weights==TRUE){
+    edges <- as.data.frame(cbind(get.edgelist(input_graph), weight=E(input_graph)$weight))
+  } else{
+    edges <- as.data.frame(cbind(get.edgelist(glc_g1), weight=1))
+  }
+  #########################################
+  
+  
+    
+  # INSTANTE INICIAL (t=0)
+  #########################################
+  
+  t <- 0
+  
+  # NODOS INICIALES Y TOTALES
+  #########################################
+
+  s1 = as.integer(N/2) + 1
+  s2 = as.integer(N/2)
+
+  list1 <- list(sample(x=edges$V1, size=s1))
+  list2 <- list(sample(x=edges$V2, size=s2))
+  nodes_ini <- flatten(Map(c, list1, list2))
+  
+  nodes <- edges %>% 
+    select(c("V1","V2")) %>% 
+    stack(c("V1","V2")) %>% 
+    mutate(nodes=values) %>% 
+    distinct(nodes) %>%
+    flatten()
+  
+  nodes_df <- edges %>% 
+    select(c("V1","V2")) %>% 
+    stack(c("V1","V2")) %>% 
+    mutate(nodes=values) %>% 
+    distinct(nodes) %>% 
+    mutate(status=0)     # STATUS: 0=no contag, 1=contag, 2=recup
+  #########################################
+  
+  
+  
+  # ACTUALIZAMOS LISTAS DE NODOS
+  #########################################
+  nodes_diss_i <- copy(nodes_ini)  # NODOS INFECTADOS
+  nodes_diss_f <- copy(nodes_ini)  # NODOS INFECTADOS
+  nodes_recup_i <- list()          # NODOS RECUPERADOS
+  nodes_recup_f <- list()          # NODOS RECUPERADOS
+  nodes_diss_conn <- list()      # NODOS CONECTADOS A INFECTADOS
+  diss_conn <- list()            # CONEXIONES SUSCEPTIBLES DE INFECCIÓN
+  #########################################
+  
+  # AÑADIMOS ESTADOS DE NODOS
+  ######################################
+  nodes_df$status[which(nodes_df$nodes %in% nodes_diss_f)] <- 1  
+  #########################################
+ 
+
+  # DATAFRAME (V,weight) NODOS CONECTADOS A INFETADOS
+  #########################################
+  V <- data.frame(V=NA, weight=NA)
+  
+  for (i in nodes_diss_f) {
+    
+    V1 <- edges %>% 
+      filter(V2==i) %>% 
+      select(V1,weight)
+    
+    V2 <- edges %>% 
+      filter(V1==i) %>% 
+      select(V2,weight)
+
+    colnames(V1) <- colnames(V)
+    colnames(V2) <- colnames(V)
+    
+    V <- rbind(V,V1)
+    V <- rbind(V,V2)
+    V <- na.omit(V)                           
+  }
+  
+  diss_conn <- V %>% 
+    select(V) %>% 
+    flatten()
+  
+  nodes_diss_conn <- V %>%  
+    select(V) %>% 
+    distinct() %>% 
+    flatten()
+  
+  #########################################
+ 
+  
+  print(paste("Instante t =",t))
+  res_df <<- data.frame(Instante=t, N=length(nodes_ini),I_nuevos=length(nodes_diss_f),
+                        I=length(nodes_diss_f), S=length(nodes_diss_conn),
+                        R_nuevos=length(nodes_recup_f),R=length(nodes_recup_f), 
+                        N_Totales=length(nodes), beta=beta, gamma=gamma)
+  
+  
+  if (length(nodes_diss_f)==0){
+    nodes_sub <- flatten(Map(c, nodes_diss_conn, nodes_recup_f))
+  } else if (length(nodes_diss_conn)==0){
+    nodes_sub <- flatten(Map(c, nodes_diss_f, nodes_recup_f))
+  } else if (length(nodes_recup_f)==0){
+    nodes_sub <- flatten(Map(c, nodes_diss_f, nodes_diss_conn))
+  } else{
+    nodes_sub <- flatten(Map(c, nodes_diss_f, nodes_diss_conn, nodes_recup_f))
+  }
+  
+  nodes_notsub <- c(unlist(setdiff(nodes, nodes_sub)))
+  
+  G <- delete_vertices(glc_g1, nodes_notsub)
+  V(G)$color <- "blue"
+  E(G)$color <- "black"
+  V(G)[c(unlist(flatten(Map(c, nodes_diss_f))))]$color <- "red"
+
+  Glist <<- list(G)
+  count <- 1
+
+  
+  # DEFINIMOS CONDICIÓN DE PARADA
+  #########################################
+  
+  if (is.numeric(num_iter)){
+    cond <- 0
+    cond_parada <- num_iter
+  } else{
+    cond <- 0
+    cond_parada <- 3
+  }
+  #########################################
+ 
+  
+  
+  
+  # ITERACIONES DE PROPAGACIÓN DEL VIRUS
+  #########################################
+  
+  while(cond < cond_parada){
+    
+    t <- t+1
+    print(paste("Iterando: instante t =",t))
+    
+    new_nodes_diss <- list()
+    
+    for (x in nodes_diss_f){
+      if (x %in% nodes_diss_i){
+        next
+      } else{
+        new_nodes_diss <- append(new_nodes_diss, x)
+      }
+    }
+    
+   
+    if (is.numeric(num_iter)){
+      cond <- cond+1
+    } else if (length(new_nodes_diss)==0){
+      cond <- cond + 1
+    } else{
+      cond <- 0
+    }
+    
+    nodes_diss_i <- nodes_diss_f
+    nodes_recup_i <- nodes_recup_f
+
+    
+    # RONDA DE INFECCIÓN (NODOS CONECTADOS A INFECTADOS)
+    ######################################
+    
+    k <- 0
+
+    if (is.na(diss_conn[1])==FALSE){
+      for (i in diss_conn){
+    
+      k <- k+1
+      rep <- V$weight[k]
+    
+      for (x in seq(1,rep,by=1)){
+        status <- nodes_df$status[which(nodes_df$nodes==i)]
+    
+        if (status==0){
+          Rand_01 <- sample(c(0,1), size=1, prob=c(1-beta,beta), replace=TRUE)
+          nodes_df$status[which(nodes_df$nodes==i)] <- Rand_01
+          }
+        else{
+          next
+          }
+        }
+      }
+    }else{
+      next
+    }
+    
+    # ACTUALIZAMOS LISTAS DE NODOS
+    nodes_diss_f <- nodes_df %>%
+      filter(status==1) %>%
+      select(nodes) %>%
+      flatten()
+    
+    nodes_recup_f <- nodes_df %>%
+      filter(status==2) %>%
+      select(nodes) %>%
+      flatten()
+    
+    ######################################
+    
+    
+    
+    
+    # RONDA DE CURACIÓN (NODOS INFECTADOS)
+    ######################################
+    
+    for (i in nodes_diss_i){
+      #cur_prob <- 0.5
+      Rand_01 <- sample(c(1,2), size=1, prob=c(1-gamma,gamma), replace=TRUE)
+      nodes_df$status[which(nodes_df$nodes==i)] <- Rand_01
+    }
+    
+    # ACTUALIZAMOS LISTAS DE NODOS
+    nodes_diss_f <- nodes_df %>%
+      filter(status==1) %>%
+      select(nodes) %>%
+      flatten()
+    
+    nodes_recup_f <- nodes_df %>%
+      filter(status==2) %>%
+      select(nodes) %>%
+      flatten()
+    ######################################
+    
+    
+    
+    
+    # DATAFRAME (V,weight) NODOS CONECTADOS A INFETADOS
+    ######################################
+    V <- data.frame(V=NA, weight=NA)
+    
+    for (i in nodes_diss_f) {
+    
+      V1 <- edges %>%
+        filter(V2==i) %>%
+        select(V1,weight)
+    
+      V2 <- edges %>%
+        filter(V1==i) %>%
+        select(V2,weight)
+    
+      colnames(V1) <- colnames(V)
+      colnames(V2) <- colnames(V)
+    
+      V <- rbind(V,V1)
+      V <- rbind(V,V2)
+      V <- na.omit(V)
+    }
+    
+    diss_conn <- V %>%
+      select(V) %>%
+      flatten()
+    
+    nodes_diss_conn <- V %>%
+      select(V) %>%
+      distinct() %>%
+      flatten()
+    
+    ######################################
+    
+    
+    
+    
+    # NUEVOS NODOS INFECTADOS Y RECUPERADOS
+    ######################################
+    
+    R_nuevos=length(nodes_recup_f)-length(nodes_recup_i)
+    new_nodes_diss <- list()
+    
+    for (x in nodes_diss_f){
+      if (x %in% nodes_diss_i){
+        next
+      } else{
+        new_nodes_diss <- append(new_nodes_diss, x)
+      }
+    }
+    
+    
+    res_df <<- rbind(res_df, data.frame(Instante=t, N=length(nodes_ini),
+                                        I_nuevos=length(new_nodes_diss), I=length(nodes_diss_f),
+                                        S=length(nodes_diss_conn),
+                                        R_nuevos=R_nuevos, R=length(nodes_recup_f), N_Totales=length(nodes), 
+                                        beta=beta, gamma=gamma))
+      
+      
+    if (length(nodes_diss_f)==0){
+      nodes_sub <- flatten(Map(c, nodes_diss_conn, nodes_recup_f))
+    } else if (length(nodes_diss_conn)==0){
+      nodes_sub <- flatten(Map(c, nodes_diss_f, nodes_recup_f))
+    } else if (length(nodes_recup_f)==0){
+      nodes_sub <- flatten(Map(c, nodes_diss_f, nodes_diss_conn))
+    } else{
+      nodes_sub <- flatten(Map(c, nodes_diss_f, nodes_diss_conn, nodes_recup_f))
+    }
+    
+    nodes_notsub <- c(unlist(setdiff(nodes, nodes_sub)))
+
+    G <- delete_vertices(glc_g1, nodes_notsub)
+    V(G)$color <- "blue"
+    E(G)$color <- "black"
+    V(G)[c(unlist(flatten(Map(c, nodes_diss_f))))]$color <- "red"
+    V(G)[c(unlist(flatten(Map(c, nodes_recup_f))))]$color <- "green"
+    
+    count <- count + 1
+    Glist[count] <<- G
+    
+      
+  }
+
+  return(res_df)
+  
+} 
+  
+  
+```
+
+
+
+
+
+Se pide ejecutar una simulación para tres o cuatro valores del parámetro beta (N y gamma pueden ser fijos en estas simulaciones) de este proceso de manera que se pueda visualizar:
+
+
+
+<font color='blue'>                      
+
+
+Se aplica el modelo a 4 casos de acuerdo a las indicaciones del ejercicio. se mantendrán fijos los parámetros N=10 y gamma=0.5, variando el parámetro beta (probab. de infección).
+
+
+Los casos analizados serán:
+
+  - CASO 1: N=10, gamma=0.5, beta=0.2
+  
+  - CASO 2: N=10, gamma=0.5, beta=0.4
+  
+  - CASO 3: N=10, gamma=0.5, beta=0.6
+  
+  - CASO 4: N=10, gamma=0.5, beta=0.8
+  
+
+A continuación se aplica el modelo y se recogen los resultados en una tabla por cada caso.
+
+
+</font>
+
+
+
+
+```{r message=FALSE, warning=FALSE}
+
+# CASO 1: N=10, gamma=0.5, beta=0.2
+
+caso_1 <- modelo_SIR(glc_g1, weights=TRUE, N=10, beta=0.2, gamma=0.5, num_iter=NA)
+caso_1
+
+```
+
+
+
+```{r message=FALSE, warning=FALSE}
+
+# CASO 2: N=10, gamma=0.5, beta=0.4
+
+caso_2 <- modelo_SIR(glc_g1, weights=TRUE, N=10, beta=0.4, gamma=0.5, num_iter=NA)
+caso_2
+
+```
+
+
+
+```{r message=FALSE, warning=FALSE}
+
+# CASO 3: N=10, gamma=0.5, beta=0.6
+
+caso_3 <- modelo_SIR(glc_g1, weights=TRUE, N=10, beta=0.6, gamma=0.5, num_iter=NA)
+caso_3
+
+```
+
+
+```{r message=FALSE, warning=FALSE}
+
+# CASO 4: N=1, gamma=0.5, beta=0.8
+
+caso_4 <- modelo_SIR(glc_g1, weights=TRUE, N=10, beta=0.8, gamma=0.5, num_iter=NA)
+caso_4
+
+```
+
+
+
+
+
+* La curva de nuevos infectados en escala logarítmica para cada caso.
+
+
+<font color='blue'>                     
+
+Utilizando los resultados obtenidos del modelo en los 4 casos, preparamos los datos para la visualización.
+
+</font>
+
+
+```{r}
+
+# Definimos las variables del gráfico
+
+caso_1U <- caso_1
+caso_2U <- rbind(caso_2, caso_2[10,])
+caso_3U <- caso_3
+caso_4U <- rbind(caso_4, caso_4[9,], caso_4[9,])
+
+xdata <- c(0,1,2,3,4,5,6,7,8,9,10) 
+
+y1 <- caso_1U$I_nuevos
+y2 <- caso_2U$I_nuevos
+y3 <- caso_3U$I_nuevos
+y4 <- caso_4U$I_nuevos
+
+
+
+```
+
+
+<font color='blue'>                    
+
+Lanzamos la visualización:
+
+</font>
+
+
+```{r, fig.width=10, fig.height=10}
+
+p_SIR <- ggplot() + geom_line(data=caso_1U, aes(x=xdata, y=log(y1), color= "Caso_1")) + 
+  geom_line(data=caso_2U, aes(x=xdata, y=log(y2), color = "Caso_2")) + 
+  geom_line(data=caso_3U, aes(x=xdata, y=log(y3), color = "Caso_3")) + 
+  geom_line(data=caso_4U, aes(x=xdata, y=log(y4), color = "Caso_4")) +
+  labs(y = "Nº infectados nuevos (escala log.)", title="Curva de nuevos infectados (modelo epidemiológico)") +
+  scale_x_continuous("Instante (nº iteración)", labels = as.character(xdata), breaks = xdata) +
+  theme(plot.title = element_text(face = "bold",margin = margin(0,0,20,0),size = 14)) +
+  theme_bw(base_line_size = 1, base_rect_size = 1)
+
+p_SIR
+
+
+```
+
+
+
+
+<font color='blue'>                   
+
+Cabe destacar que existen pequeñas variaciones en el comportamiento del modelo conforme varia la probabilidad de infección: el aumento adelanta las infecciones y las recuperaciones, mientras que su reducción hace que se tarde algo más en alcanzar el máximo de infectados y su descenso posteriormente es mucho más gradual.
+
+
+
+A pesar de las consideraciones anteriores, la forma de las 4 gráficas a grandes rasgos es muy similar, no se aprecian grandes diferencias. Por lo que se puede considerar que el modelo se ve influido en gran medida por la propia estructura/topología de la red (grafo).
+
+
+</font>
+
+
+
+
+
+* El grafo que surge de la cascada de contagios: es decir, dos nodos están enlazados ahora si uno ha contagiado al otro. Como es lógico, tanto los nodos como los enlaces de este nuevo grafo son un subconjunto del grafo original.
+
+```{r}
+
+# saveGIF({
+#   count=1
+#   for(i in 1:length(Glist)){
+#     plot(Glist[[i]], layout = L,
+#          vertex.label = NA, 
+#          vertex.size = 10,
+#          vertex.color= V(G)$color,
+#          vertex.frame.color= "white",
+#          edge.arrow.size = 1,
+#          edge.color=E(G)$color)
+#     count = count +1
+#     title(main="Graph simulation example", 
+#           sub=paste("Time = ",count), cex.main = 3, cex.sub = 2)
+#     }
+# 
+#   }, interval = 1, movie.name = "demo.gif", ani.width = 1000, ani.height = 1000)
+
+
+```
+
+
+
+
+
